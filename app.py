@@ -104,7 +104,7 @@ async def startup_event():
 async def root(request: Request):
     if request.method == "HEAD":
         return Response(status_code=200)
-    return {"message": "Serwer działa prawidłowo - TradingView & Capital.com"}
+    return {"message": "Serwer dziala prawidlowo - TradingView & Capital.com"}
 
 # ==========================
 # Handler błędu 405
