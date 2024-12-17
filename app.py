@@ -22,7 +22,8 @@ PING_URL = os.getenv("PING_URL", "https://repositorytv.onrender.com/")  # Dynami
 # ==========================
 async def get_auth_headers():
     return {
-        "X-CAP-API-KEY": CAPITAL_API_KEY,
+        "X-CAP-API-KEY": szqqCiGoHwEIJnlf,  # Klucz API
+        "X-CAP-API-PASSWORD": "1DawaćKaske2@#!",       # Dodaj swoje hasło API ustawione na Capital.com
         "Content-Type": "application/json"
     }
 
