@@ -15,13 +15,22 @@ CAPITAL_API_KEY = "0ZxPppptSYX7q3F5"  # Wstaw swój klucz API tutaj
 # Funkcja do wysyłania żądań do Capital.com
 # ==========================
 async def send_to_capital(endpoint: str, payload: dict):
+    url = f"{CAPITAL_API_URL}/{endpoint}"
     headers = {
         "Authorization": f"Bearer {CAPITAL_API_KEY}",
         "Content-Type": "application/json"
     }
     async with httpx.AsyncClient() as client:
-        response = await client.get("https://tv-capital-webhook.onrender.com/")
-        return response.json()
+        try:
+            response = await client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP Error: {e.response.status_code} - {e.response.text}")
+            return {"error": e.response.text}
+        except Exception as e:
+            print(f"Request Failed: {e}")
+            return {"error": str(e)}
 
 # ==========================
 # Endpoint do odbierania sygnałów z TradingView
@@ -91,10 +100,11 @@ async def keep_alive():
     """
     Wysyła regularny ping do serwera, aby utrzymać go aktywnym.
     """
+    server_url = "https://repositorytv.onrender.com/"
     while True:
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get("http://localhost:8000/")
+                response = await client.get(server_url)
                 print(f"Keep-Alive Ping: {response.status_code}")
             except Exception as e:
                 print(f"Keep-Alive Error: {e}")
