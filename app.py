@@ -14,24 +14,47 @@ app = FastAPI()
 # Konfiguracja Capital.com API
 # ==========================
 CAPITAL_API_URL = "https://demo-api-capital.backend-capital.com/api/v1"
-CAPITAL_API_KEY = os.getenv("CAPITAL_API_KEY", "szqqCiGoHwEIJnlf")
+CAPITAL_API_KEY = os.getenv("CAPITAL_API_KEY", "szqqCiGoHwEIJnlf")  # Twój klucz API
+CAPITAL_API_PASSWORD = os.getenv("CAPITAL_API_PASSWORD", "1DawaćKaskę2@#!")  # Hasło API
 PING_URL = os.getenv("PING_URL", "https://repositorytv.onrender.com/")  # Dynamiczny URL
 
 # ==========================
 # Funkcja autoryzacji w Capital.com
 # ==========================
 async def get_auth_headers():
-    return {
-        "X-CAP-API-KEY": szqqCiGoHwEIJnlf,  # Klucz API
-        "X-CAP-API-PASSWORD": "1DawaćKaske2@#!",       # Dodaj swoje hasło API ustawione na Capital.com
-        "Content-Type": "application/json"
+    auth_payload = {
+        "identifier": CAPITAL_API_KEY,
+        "password": CAPITAL_API_PASSWORD
     }
+    try:
+        async with httpx.AsyncClient() as client:
+            auth_url = f"{CAPITAL_API_URL}/session"  # Endpoint autoryzacyjny
+            response = await client.post(auth_url, json=auth_payload)
+            response_data = response.json()
+            logger.info(f"API Auth Response: {response_data}")
+            if response.status_code == 200:
+                cst = response_data.get("cst")
+                security_token = response_data.get("securityToken")
+                return {
+                    "X-CAP-API-KEY": CAPITAL_API_KEY,
+                    "CST": cst,
+                    "X-SECURITY-TOKEN": security_token,
+                    "Content-Type": "application/json"
+                }
+            else:
+                logger.error(f"Błąd autoryzacji: {response_data}")
+                return None
+    except Exception as e:
+        logger.error(f"Error during authentication: {e}")
+        return None
 
 # ==========================
 # Funkcja do wysyłania zleceń
 # ==========================
 async def send_to_capital(endpoint: str, payload: dict):
     headers = await get_auth_headers()
+    if not headers:
+        return {"error": "Błąd autoryzacji"}
     async with httpx.AsyncClient() as client:
         url = f"{CAPITAL_API_URL}/{endpoint}"
         try:
@@ -51,7 +74,12 @@ async def webhook(request: Request):
     if request.method == "HEAD":
         return Response(status_code=200)
 
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception as e:
+        logger.error(f"Błąd parsowania JSON: {e}")
+        return {"error": "Niepoprawny format JSON"}
+
     action = data.get("action", "").upper()
     symbol = data.get("symbol")
     size = data.get("size", 1)
