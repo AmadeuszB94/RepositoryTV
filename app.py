@@ -2,7 +2,7 @@ import os
 import httpx
 import asyncio
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 
 # Ustawienie logowania
 logging.basicConfig(level=logging.INFO)
@@ -45,7 +45,11 @@ async def send_to_capital(endpoint: str, payload: dict):
 # Endpoint odbierający sygnały z TradingView
 # ==========================
 @app.post("/webhook")
+@app.head("/webhook")  # Dodanie obsługi HEAD
 async def webhook(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=200)
+
     data = await request.json()
     action = data.get("action", "").upper()
     symbol = data.get("symbol")
@@ -86,8 +90,8 @@ async def keep_alive():
                 logger.info(f"Keep-Alive: {response.status_code}")
             except Exception as e:
                 logger.error(f"Błąd Keep-Alive: {e}")
-        await asyncio.sleep(45)  
-        
+        await asyncio.sleep(45)
+
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(keep_alive())
@@ -96,5 +100,15 @@ async def startup_event():
 # Endpoint testowy
 # ==========================
 @app.get("/")
-async def root():
+@app.head("/")  # Dodanie obsługi HEAD
+async def root(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=200)
     return {"message": "Serwer działa prawidłowo - TradingView & Capital.com"}
+
+# ==========================
+# Handler błędu 405
+# ==========================
+@app.exception_handler(405)
+async def method_not_allowed_handler(request: Request, exc):
+    return Response(content="Metoda HTTP nie jest obsługiwana dla tego endpointu", status_code=405)
