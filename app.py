@@ -4,7 +4,9 @@ import asyncio
 import logging
 from fastapi import FastAPI, Request, Response
 
+# ==========================
 # Ustawienie logowania
+# ==========================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -14,8 +16,8 @@ app = FastAPI()
 # Konfiguracja Capital.com API
 # ==========================
 CAPITAL_API_URL = "https://demo-api-capital.backend-capital.com/api/v1"
-CAPITAL_API_KEY = os.getenv("CAPITAL_API_KEY", "szqqCiGoHwEIJnlf")  # Twój klucz API
-CAPITAL_PASSWORD = os.getenv("CAPITAL_PASSWORD", "1DawaćKaskę2@#!")  # Twoje hasło API
+CAPITAL_API_KEY = os.getenv("CAPITAL_API_KEY", "M6GSDg0ESMM9Ab3B")  # Nowy klucz API
+CAPITAL_PASSWORD = os.getenv("CAPITAL_PASSWORD", "1DawacKaske2@#!")  # Nowe hasło
 PING_URL = os.getenv("PING_URL", "https://repositorytv.onrender.com/")
 
 # ==========================
@@ -24,7 +26,6 @@ PING_URL = os.getenv("PING_URL", "https://repositorytv.onrender.com/")
 async def get_auth_headers():
     return {
         "X-CAP-API-KEY": CAPITAL_API_KEY,
-        "Authorization": f"Basic {CAPITAL_PASSWORD}",
         "Content-Type": "application/json"
     }
 
@@ -37,8 +38,9 @@ async def send_to_capital(endpoint: str, payload: dict):
         url = f"{CAPITAL_API_URL}/{endpoint}"
         try:
             response = await client.post(url, json=payload, headers=headers)
-            logger.info(f"API Response ({response.status_code}): {response.json()}")
-            return response.json()
+            response_json = response.json()
+            logger.info(f"API Response ({response.status_code}): {response_json}")
+            return response_json
         except Exception as e:
             logger.error(f"Error sending request: {e}")
             return {"error": str(e)}
@@ -47,23 +49,44 @@ async def send_to_capital(endpoint: str, payload: dict):
 # Endpoint odbierający sygnały z TradingView
 # ==========================
 @app.post("/webhook")
+@app.head("/webhook")
 async def webhook(request: Request):
-    data = await request.json()
+    if request.method == "HEAD":
+        return Response(status_code=200)
+
+    try:
+        data = await request.json()
+    except Exception as e:
+        logger.error(f"Błąd odczytu JSON: {e}")
+        return {"error": "Nieprawidłowy format JSON"}
+
     action = data.get("action", "").upper()
     symbol = data.get("symbol")
     size = data.get("size", 1)
+    tp = data.get("tp")
+    sl = data.get("sl")
+    deal_id = data.get("dealId")
 
     if not action or not symbol:
         return {"error": "Brak wymaganych parametrów: action lub symbol"}
 
-    logger.info(f"Otrzymano: {action}, Symbol: {symbol}, Rozmiar: {size}")
+    logger.info(f"Otrzymano: {action}, Symbol: {symbol}, Rozmiar: {size}, TP: {tp}, SL: {sl}, DealID: {deal_id}")
 
     payload = {"epic": symbol, "size": size, "orderType": "MARKET", "currencyCode": "USD"}
+    if tp:
+        payload["limitLevel"] = tp
+    if sl:
+        payload["stopLevel"] = sl
 
     if action in ["BUY", "SELL"]:
         payload["direction"] = action
         response = await send_to_capital("positions", payload)
         return {"status": f"{action} zlecenie wysłane", "response": response}
+    elif action == "CLOSE":
+        if not deal_id:
+            return {"error": "Brak dealId dla zamknięcia pozycji"}
+        response = await send_to_capital(f"positions/{deal_id}", payload)
+        return {"status": "Zamknięto pozycję", "response": response}
     else:
         return {"error": "Niepoprawna akcja"}
 
@@ -88,5 +111,15 @@ async def startup_event():
 # Endpoint testowy
 # ==========================
 @app.get("/")
-async def root():
+@app.head("/")
+async def root(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=200)
     return {"message": "Serwer działa prawidłowo - TradingView & Capital.com"}
+
+# ==========================
+# Handler błędu 405
+# ==========================
+@app.exception_handler(405)
+async def method_not_allowed_handler(request: Request, exc):
+    return Response(content="Metoda HTTP nie jest obsługiwana dla tego endpointu", status_code=405)
