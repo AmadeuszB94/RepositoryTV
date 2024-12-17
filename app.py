@@ -4,9 +4,7 @@ import asyncio
 import logging
 from fastapi import FastAPI, Request, Response
 
-# ==========================
 # Ustawienie logowania
-# ==========================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -16,16 +14,19 @@ app = FastAPI()
 # Konfiguracja Capital.com API
 # ==========================
 CAPITAL_API_URL = "https://demo-api-capital.backend-capital.com/api/v1"
-CAPITAL_API_KEY = os.getenv("CAPITAL_API_KEY", "M6GSDg0ESMM9Ab3B")
-CAPITAL_PASSWORD = os.getenv("CAPITAL_PASSWORD", "1DawacKaske2@#!")
-SESSION_TOKEN = None  # Przechowuje token sesji
+CAPITAL_API_KEY = os.getenv("CAPITAL_API_KEY")
+CAPITAL_PASSWORD = os.getenv("CAPITAL_PASSWORD")
 PING_URL = os.getenv("PING_URL", "https://repositorytv.onrender.com/")
 
+# Sprawdzenie poprawności zmiennych środowiskowych
+logger.info(f"CAPITAL_API_KEY: {CAPITAL_API_KEY}")
+logger.info(f"CAPITAL_PASSWORD: {CAPITAL_PASSWORD}")
+
+
 # ==========================
-# Funkcja logowania do Capital.com
+# Funkcja autoryzacji w Capital.com
 # ==========================
-async def login_to_capital():
-    global SESSION_TOKEN
+async def authenticate():
     url = f"{CAPITAL_API_URL}/session"
     payload = {"identifier": CAPITAL_API_KEY, "password": CAPITAL_PASSWORD}
     headers = {"Content-Type": "application/json"}
@@ -34,58 +35,85 @@ async def login_to_capital():
         try:
             response = await client.post(url, json=payload, headers=headers)
             if response.status_code == 200:
-                SESSION_TOKEN = response.json().get("session")
-                logger.info("Pomyślnie uzyskano token sesji.")
+                session_data = response.json()
+                logger.info(f"Autoryzacja udana: {session_data}")
+                return session_data.get("session")  # Zwraca token sesji
             else:
-                logger.error(f"Logowanie nie powiodło się: {response.text}")
+                logger.error(f"Błąd autoryzacji: {response.text}")
+                return None
         except Exception as e:
-            logger.error(f"Błąd logowania: {e}")
+            logger.error(f"Wystąpił błąd podczas autoryzacji: {e}")
+            return None
 
-# ==========================
-# Funkcja autoryzacji w Capital.com
-# ==========================
-async def get_auth_headers():
-    if not SESSION_TOKEN:
-        await login_to_capital()
-    return {
-        "Authorization": f"Bearer {SESSION_TOKEN}",
-        "Content-Type": "application/json"
-    }
 
 # ==========================
 # Funkcja do wysyłania zleceń
 # ==========================
-async def send_to_capital(endpoint: str, payload: dict):
-    headers = await get_auth_headers()
+async def send_to_capital(endpoint: str, payload: dict, token: str):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
+    url = f"{CAPITAL_API_URL}/{endpoint}"
     async with httpx.AsyncClient() as client:
-        url = f"{CAPITAL_API_URL}/{endpoint}"
         try:
             response = await client.post(url, json=payload, headers=headers)
             logger.info(f"API Response ({response.status_code}): {response.json()}")
             return response.json()
         except Exception as e:
-            logger.error(f"Error sending request: {e}")
+            logger.error(f"Błąd podczas wysyłania żądania: {e}")
             return {"error": str(e)}
+
 
 # ==========================
 # Endpoint odbierający sygnały z TradingView
 # ==========================
 @app.post("/webhook")
+@app.head("/webhook")  # Dodanie obsługi HEAD
 async def webhook(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=200)
+
     data = await request.json()
     action = data.get("action", "").upper()
     symbol = data.get("symbol")
     size = data.get("size", 1)
+    tp = data.get("tp")
+    sl = data.get("sl")
 
     if not action or not symbol:
         return {"error": "Brak wymaganych parametrów: action lub symbol"}
 
-    logger.info(f"Otrzymano: {action}, Symbol: {symbol}, Rozmiar: {size}")
-    payload = {"epic": symbol, "size": size, "orderType": "MARKET", "currencyCode": "USD"}
-    payload["direction"] = action
+    logger.info(f"Otrzymano: {action}, Symbol: {symbol}, Rozmiar: {size}, TP: {tp}, SL: {sl}")
 
-    response = await send_to_capital("positions", payload)
-    return {"status": f"{action} zlecenie wysłane", "response": response}
+    token = await authenticate()
+    if not token:
+        return {"error": "Nie udało się zalogować do Capital.com"}
+
+    payload = {"epic": symbol, "size": size, "orderType": "MARKET", "currencyCode": "USD"}
+    if tp:
+        payload["limitLevel"] = tp
+    if sl:
+        payload["stopLevel"] = sl
+
+    if action in ["BUY", "SELL"]:
+        payload["direction"] = action
+        response = await send_to_capital("positions", payload, token)
+        return {"status": f"{action} zlecenie wysłane", "response": response}
+    else:
+        return {"error": "Niepoprawna akcja"}
+
+
+# ==========================
+# Endpoint testowy
+# ==========================
+@app.get("/")
+@app.head("/")  # Dodanie obsługi HEAD
+async def root(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=200)
+    return {"message": "Serwer działa prawidłowo - TradingView & Capital.com"}
+
 
 # ==========================
 # Mechanizm podtrzymania serwera
@@ -100,13 +128,7 @@ async def keep_alive():
                 logger.error(f"Błąd Keep-Alive: {e}")
         await asyncio.sleep(45)
 
+
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(keep_alive())
-
-# ==========================
-# Endpoint testowy
-# ==========================
-@app.get("/")
-async def root():
-    return {"message": "Serwer działa prawidłowo - TradingView & Capital.com"}
