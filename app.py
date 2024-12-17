@@ -101,7 +101,7 @@ async def keep_alive():
                 print(f"Keep-Alive: {response.status_code}")
             except Exception as e:
                 print(f"Błąd Keep-Alive: {e}")
-        await asyncio.sleep(48)
+        await asyncio.sleep(40)
 
 @app.on_event("startup")
 async def startup_event():
