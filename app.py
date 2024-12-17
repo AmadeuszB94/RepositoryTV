@@ -31,19 +31,25 @@ async def authenticate():
     payload = {"identifier": CAPITAL_API_KEY, "password": CAPITAL_PASSWORD}
     headers = {"Content-Type": "application/json"}
 
+    logger.info(f"Próba autoryzacji z URL: {url}")
+    logger.info(f"Payload: {payload}")
+    logger.info(f"Headers: {headers}")
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(url, json=payload, headers=headers)
+            logger.info(f"Odpowiedź API: {response.status_code} - {response.text}")
             if response.status_code == 200:
                 session_data = response.json()
-                logger.info(f"Autoryzacja udana: {session_data}")
-                return session_data.get("session")  # Zwraca token sesji
+                logger.info(f"Token sesji: {session_data.get('token')}")
+                return session_data.get("token")
             else:
-                logger.error(f"Błąd autoryzacji: {response.text}")
+                logger.error(f"Błąd autoryzacji: {response.json()}")
                 return None
         except Exception as e:
             logger.error(f"Wystąpił błąd podczas autoryzacji: {e}")
             return None
+
 
 
 # ==========================
