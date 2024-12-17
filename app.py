@@ -20,7 +20,7 @@ async def send_to_capital(endpoint: str, payload: dict):
         "Content-Type": "application/json"
     }
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{CAPITAL_API_URL}/{endpoint}", headers=headers, json=payload)
+        response = await client.get("https://tv-capital-webhook.onrender.com/")
         return response.json()
 
 # ==========================
