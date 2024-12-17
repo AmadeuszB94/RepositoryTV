@@ -30,9 +30,11 @@ logger.info(f"CAPITAL_PASSWORD: {CAPITAL_PASSWORD}")
 async def authenticate():
     url = f"{CAPITAL_API_URL}/session"
     payload = {"identifier": CAPITAL_API_KEY, "password": CAPITAL_PASSWORD}
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "X-CAP-API-KEY": CAPITAL_API_KEY  # Klucz API w nagłówku
+    }
 
-    # Logowanie próby autoryzacji
     logger.info(f"Próba autoryzacji z URL: {url}")
     logger.info(f"Payload: {payload}")
     logger.info(f"Headers: {headers}")
@@ -40,8 +42,6 @@ async def authenticate():
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(url, json=payload, headers=headers)
-            
-            # Logowanie odpowiedzi API
             logger.info(f"Odpowiedź API: {response.status_code} - {response.text}")
 
             if response.status_code == 200:
@@ -52,13 +52,12 @@ async def authenticate():
                     return token
                 else:
                     logger.error("Brak tokena w odpowiedzi API.")
-                    return None
             else:
-                logger.error(f"Błąd autoryzacji. Status: {response.status_code}, Treść: {response.text}")
-                return None
+                logger.error(f"Błąd autoryzacji: {response.status_code} - {response.text}")
         except Exception as e:
-            logger.error(f"Wystąpił błąd podczas autoryzacji: {e}")
-            return None
+            logger.error(f"Błąd podczas autoryzacji: {e}")
+    return None
+
 
 # ==========================
 # Funkcja do wysyłania zleceń
