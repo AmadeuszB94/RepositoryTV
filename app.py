@@ -13,7 +13,7 @@ app = FastAPI()
 # ==========================
 # Konfiguracja Capital.com API
 # ==========================
-CAPITAL_API_URL = "CAPITAL_API_URL = "https://demo-api-capital.backend-capital.com/api/v1"
+CAPITAL_API_URL = "https://demo-api-capital.backend-capital.com/api/v1"
 CAPITAL_API_KEY = os.getenv("CAPITAL_API_KEY", "szqqCiGoHwEIJnlf")
 PING_URL = os.getenv("PING_URL", "https://repositorytv.onrender.com/")  # Dynamiczny URL
 
