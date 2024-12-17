@@ -1,36 +1,51 @@
 import httpx
 from fastapi import FastAPI, Request
 import asyncio
-import json
 
 app = FastAPI()
 
 # ==========================
 # Konfiguracja API Capital.com
 # ==========================
-CAPITAL_API_URL = "https://api-capital.com"
-CAPITAL_API_KEY = "0ZxPppptSYX7q3F5"  # Wstaw swój klucz API tutaj
+CAPITAL_API_URL = "https://api-capital.backend-capital.com"
+CAPITAL_DEMO_URL = "https://demo-api-capital.backend-capital.com"
+CAPITAL_API_KEY = "0ZxPppptSYX7q3F5"  # <-- Wstaw tutaj swój klucz API
+IS_DEMO = True  # Ustawienie dla konta Demo (True) lub Real (False)
+
+# ==========================
+# Wybór URL na podstawie konta
+# ==========================
+BASE_URL = CAPITAL_DEMO_URL if IS_DEMO else CAPITAL_API_URL
+
+# ==========================
+# Funkcja do uzyskania sesji z Capital.com
+# ==========================
+async def start_session():
+    payload = {"identifier": "YOUR_LOGIN", "password": "YOUR_PASSWORD"}
+    headers = {"X-CAP-API-KEY": CAPITAL_API_KEY}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/api/v1/session", json=payload, headers=headers)
+        if response.status_code == 200:
+            cst = response.headers.get("CST")
+            security_token = response.headers.get("X-SECURITY-TOKEN")
+            return cst, security_token
+        else:
+            print(f"Session start failed: {response.text}")
+            return None, None
 
 # ==========================
 # Funkcja do wysyłania żądań do Capital.com
 # ==========================
-async def send_to_capital(endpoint: str, payload: dict):
-    url = f"{CAPITAL_API_URL}/{endpoint}"
+async def send_to_capital(endpoint: str, payload: dict, cst: str, security_token: str):
     headers = {
         "Authorization": f"Bearer {CAPITAL_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "CST": cst,
+        "X-SECURITY-TOKEN": security_token
     }
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            print(f"HTTP Error: {e.response.status_code} - {e.response.text}")
-            return {"error": e.response.text}
-        except Exception as e:
-            print(f"Request Failed: {e}")
-            return {"error": str(e)}
+        response = await client.post(f"{BASE_URL}/api/v1/{endpoint}", json=payload, headers=headers)
+        return response.json()
 
 # ==========================
 # Endpoint do odbierania sygnałów z TradingView
@@ -41,25 +56,32 @@ async def webhook(request: Request):
     Odbiera sygnały z TradingView i wykonuje odpowiednie akcje na Capital.com
     """
     data = await request.json()
-    action = data.get("action")  # "BUY", "SELL", "CLOSE"
+    action = data.get("action")  # BUY, SELL, CLOSE
     symbol = data.get("symbol", "US100")
     size = data.get("size", 1)
-    tp = data.get("tp", None)
-    sl = data.get("sl", None)
+    tp = data.get("tp")
+    sl = data.get("sl")
+    strategy = data.get("strategy", "default")
+    interval = data.get("interval", "1m")
 
-    print(f"Received action: {action}, Symbol: {symbol}, Size: {size}, TP: {tp}, SL: {sl}")
+    print(f"Action: {action}, Symbol: {symbol}, Size: {size}, TP: {tp}, SL: {sl}, Strategy: {strategy}, Interval: {interval}")
 
+    # Startowanie sesji
+    cst, security_token = await start_session()
+    if not cst or not security_token:
+        return {"error": "Failed to start session"}
+
+    # Obsługa akcji
     if action == "BUY":
         payload = {
             "epic": symbol,
             "direction": "BUY",
             "size": size,
             "orderType": "MARKET",
-            "currencyCode": "USD",
             "limitLevel": tp,
             "stopLevel": sl
         }
-        response = await send_to_capital("positions/otc", payload)
+        response = await send_to_capital("positions", payload, cst, security_token)
         return {"status": "BUY order sent", "response": response}
 
     elif action == "SELL":
@@ -68,30 +90,18 @@ async def webhook(request: Request):
             "direction": "SELL",
             "size": size,
             "orderType": "MARKET",
-            "currencyCode": "USD",
             "limitLevel": tp,
             "stopLevel": sl
         }
-        response = await send_to_capital("positions/otc", payload)
+        response = await send_to_capital("positions", payload, cst, security_token)
         return {"status": "SELL order sent", "response": response}
 
     elif action == "CLOSE":
-        payload = {
-            "epic": symbol,
-            "orderType": "MARKET"
-        }
-        response = await send_to_capital("positions/otc/close", payload)
+        payload = {"epic": symbol}
+        response = await send_to_capital("positions/close", payload, cst, security_token)
         return {"status": "Position closed", "response": response}
 
-    else:
-        return {"error": "Invalid action"}
-
-# ==========================
-# Prosty endpoint testowy
-# ==========================
-@app.get("/")
-async def root():
-    return {"message": "TradingView & Capital.com Integration Active"}
+    return {"error": "Invalid action"}
 
 # ==========================
 # Mechanizm podtrzymania aktywności serwera
@@ -100,17 +110,22 @@ async def keep_alive():
     """
     Wysyła regularny ping do serwera, aby utrzymać go aktywnym.
     """
-    server_url = "https://repositorytv.onrender.com/"
     while True:
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get(server_url)
+                response = await client.get("https://tv-capital-webhook.onrender.com/")
                 print(f"Keep-Alive Ping: {response.status_code}")
             except Exception as e:
                 print(f"Keep-Alive Error: {e}")
         await asyncio.sleep(48)  # Ping co 48 sekund
 
-# Uruchomienie taska w tle
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(keep_alive())
+
+# ==========================
+# Prosty endpoint testowy
+# ==========================
+@app.get("/")
+async def root():
+    return {"message": "TradingView & Capital.com Integration Active"}
