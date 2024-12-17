@@ -121,21 +121,11 @@ async def webhook(request: Request):
     return {"status": f"{action} zlecenie wysłane", "response": response}
 
 # ==========================
-# Mechanizm podtrzymania serwera
+# Obsługa metody HEAD dla /webhook
 # ==========================
-async def keep_alive():
-    while True:
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(PING_URL)
-                logger.info(f"Keep-Alive: {response.status_code}")
-            except Exception as e:
-                logger.error(f"Błąd Keep-Alive: {e}")
-        await asyncio.sleep(45)
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(keep_alive())
+@app.head("/webhook")
+async def webhook_head():
+    return Response(status_code=200)
 
 # ==========================
 # Endpoint testowy
@@ -143,3 +133,10 @@ async def startup_event():
 @app.get("/")
 async def root():
     return {"message": "Serwer działa prawidłowo - TradingView & Capital.com"}
+
+# ==========================
+# Obsługa metody HEAD dla /
+# ==========================
+@app.head("/")
+async def root_head():
+    return Response(status_code=200)
