@@ -50,8 +50,6 @@ async def authenticate():
             logger.error(f"Wystąpił błąd podczas autoryzacji: {e}")
             return None
 
-
-
 # ==========================
 # Funkcja do wysyłania zleceń
 # ==========================
