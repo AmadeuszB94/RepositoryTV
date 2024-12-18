@@ -139,3 +139,25 @@ async def root():
 @app.head("/")
 async def root_head():
     return Response(status_code=200)
+
+import asyncio
+import httpx
+
+# Funkcja pingująca serwer
+async def keep_alive():
+    while True:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.head(PING_URL)
+                logger.info(f"Ping na {PING_URL}: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Błąd podczas pingowania serwera: {e}")
+        
+        # Odczekaj 45 sekund
+        await asyncio.sleep(45)
+
+# Uruchomienie pętli pingującej
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(keep_alive())
+
